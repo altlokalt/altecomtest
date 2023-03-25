@@ -34,3 +34,11 @@ flutter:
           weight: 400
         - asset: assets/fonts/PoppinsSemiBold.ttf
           weight: 600
+  msix_config:
+    display_name: <AppName>
+    publisher_display_name: <PublisherName>
+    identity_name: <PublisherName.AppName>
+    publisher: <PublisherID>
+    msix_version: 1.0.0.0
+    logo_path: ./logo/<file_name.png>
+    store: true
