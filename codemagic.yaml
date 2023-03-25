@@ -1,0 +1,147 @@
+  environment:
+    vars:
+      PUB_DEV_CREDENTIALS
+  
+  # ...
+
+  scripts:
+    - name: Publish to pub.dev
+      script: | 
+        echo $PUB_DEV_CREDENTIALS > "$FLUTTER_ROOT/.pub-cache/credentials.json"
+        flutter pub publish --dry-run
+        flutter pub publish -f
+        
+definitions:
+  cache: &cache
+    cache_paths:
+      - $CM_BUILD_DIR/.venv
+  artifacts: &artifacts
+    - dist/codemagic*.whl
+    - dist/codemagic*.tar.gz
+  scripts:
+    - &install_dependencies
+      name: Install dependencies
+      script: |
+        curl -sSL https://install.python-poetry.org | python3 -
+        poetry config virtualenvs.in-project true
+        poetry install --no-interaction
+    - &check_code_formatting
+      name: Check code formatting
+      script: poetry run flake8 .
+    - &check_imports_ordering
+      name: Check imports ordering
+      script: poetry run isort --check-only .
+    - &static_type_checks
+      name: Static type checks with mypy
+      script: poetry run mypy src
+    - &run_tests
+      name: Run tests
+      script: poetry run pytest --junitxml="test-report.xml"
+      test_report: test-report.xml
+    - &update_version_in_source
+      name: Update version number in source code
+      script: |
+        set -e
+        VERSION=$(poetry version --short)
+        echo "Using version $VERSION"
+        sed -i -e \
+          "s/__version__ = .*/__version__ = '${VERSION}'/g" \
+          src/codemagic/__version__.py
+    - &build_wheels
+      name: Build wheels
+      script: poetry build
+
+workflows:
+  tests:
+    instance_type: mac_mini_m1
+    triggering:
+      events:
+        - push
+      cancel_previous_builds: true
+    cache: *cache
+    scripts:
+      - *install_dependencies
+      - *check_code_formatting
+      - *check_imports_ordering
+      - *static_type_checks
+      - *run_tests
+
+  release-test:
+    name: Release [Test]
+    instance_type: mac_mini_m1
+    cache: *cache
+    environment:
+      groups:
+        - github
+        - pypi-test
+    scripts:
+      - *install_dependencies
+      - *check_code_formatting
+      - *check_imports_ordering
+      - *static_type_checks
+      - *run_tests
+      - name: Bump version number for development build
+        script: poetry version "$(poetry version --short).${BUILD_NUMBER:?}"
+      - *update_version_in_source
+      - *build_wheels
+      - name: Make GitHub prerelease
+        script: |
+          set -e
+          TAG_NAME=v$(poetry version --short)
+          cp dist/codemagic_cli_tools-*-py3-none-any.whl dist/codemagic_cli_tools-latest-py3-none-any.whl
+          gh release create "${TAG_NAME}" \
+              --title "${TAG_NAME}" \
+              --notes "Test release of ${TAG_NAME}" \
+              --prerelease \
+              --draft \
+              dist/codemagic*.whl \
+              dist/codemagic*.tar.gz
+          rm dist/codemagic_cli_tools-latest-py3-none-any.whl
+      - name: Publish release to PyPI Test environment
+        script: |
+          poetry config repositories.test-pypi https://test.pypi.org/legacy/
+          poetry publish \
+            --repository test-pypi \
+            --username "__token__" \
+            --password "${PYPI_TOKEN:?}"
+    artifacts: *artifacts
+
+  release:
+    name: Release
+    instance_type: mac_mini_m1
+    cache: *cache
+    environment:
+      groups:
+        - github
+        - pypi
+    scripts:
+      - name: Verify branch
+        script: |
+          if [ "${CM_BRANCH:?}" != "master" ];
+          then
+            echo "Not on master branch, cannot release from branch $CM_BRANCH"
+            exit 1
+          fi
+      - *install_dependencies
+      - *check_code_formatting
+      - *check_imports_ordering
+      - *static_type_checks
+      - *run_tests
+      - *update_version_in_source
+      - *build_wheels
+      - name: Make GitHub release
+        script: |
+          set -e
+          TAG_NAME=v$(poetry version --short)
+          previous_version_line=$(grep -n "^Version " CHANGELOG.md | head -2 | tail -1 | cut -f1 -d:)
+          head -n "$(($previous_version_line - 1))" CHANGELOG.md | tail +3 > release_notes.md
+          cp dist/codemagic_cli_tools-*-py3-none-any.whl dist/codemagic_cli_tools-latest-py3-none-any.whl
+          gh release create "${TAG_NAME}" \
+              --title "${TAG_NAME}" \
+              --notes-file release_notes.md \
+              dist/codemagic*.whl \
+              dist/codemagic*.tar.gz
+          rm dist/codemagic_cli_tools-latest-py3-none-any.whl
+      - name: Publish release to PyPI
+        script: poetry publish --username "__token__" --password "${PYPI_TOKEN:?}"
+    artifacts: *artifacts
