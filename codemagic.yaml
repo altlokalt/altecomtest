@@ -1,59 +1,10 @@
-  environment:
-    vars:
-      PUB_DEV_CREDENTIALS
-    groups:
-      - windows_credentials
-  # ...
-
-  scripts:
-    - name: Publish to pub.dev
-      script: | 
-        echo $PUB_DEV_CREDENTIALS > "$FLUTTER_ROOT/.pub-cache/credentials.json"
-        flutter pub publish --dry-run
-        flutter pub publish -f
-    - name: Get Flutter packages
-    
-  script: | 
-          flutter packages pub get
-    - name: Build Flutter Windows
-      script: | 
-        flutter config --enable-windows-desktop
-        flutter build windows --release
-        cd build/windows/runner/Release
-        7z a -r ../release.zip ./*
-    artifacts:
-      - build/windows/runner/*.zip
-            # ....
-    - name: Create package
-      script: | 
-        # if you did not add the msix pub package to your project:
-        flutter pub add msix  
-        #
-        # if you have specified configuration in pubspec.yaml:
-        flutter pub run msix:create
-        #
-        # if you did not modify `pubspec.yaml`:
-        #flutter pub run msix:create --store \
-        #  --publisher-display-name=MyName \
-        #  --display-name=MyAppName \
-        #  --publisher=CN=xx-yy-zz \
-        #  --identity-name=com.flutter.MyApp \
-        #  --version=1.0.2.0
-    artifacts:
-      - build/windows/**/*.msix
-
-      
-   dev_dependencies:
-    msix: ^2.6.5
-    
-   definitions:
-    cache: &cache
+definitions:
+  cache: &cache
     cache_paths:
       - $CM_BUILD_DIR/.venv
   artifacts: &artifacts
     - dist/codemagic*.whl
     - dist/codemagic*.tar.gz
-    
   scripts:
     - &install_dependencies
       name: Install dependencies
@@ -102,17 +53,6 @@ workflows:
       - *static_type_checks
       - *run_tests
 
-workflows:
-  android-workflow-id:
-    # ....
-    environment:
-      groups:
-        - keystore_credentials
-        - google_play
-      vars:
-        PACKAGE_NAME: "io.codemagic.fluttersample"
-        GOOGLE_PLAY_TRACK: alpha
-
   release-test:
     name: Release [Test]
     instance_type: mac_mini_m1
@@ -152,38 +92,6 @@ workflows:
             --username "__token__" \
             --password "${PYPI_TOKEN:?}"
     artifacts: *artifacts
-
-  scripts:
-    - name: Build AAB with Flutter
-      script: | 
-        BUILD_NUMBER=$(($(google-play get-latest-build-number --package-name "$PACKAGE_NAME" --tracks="$GOOGLE_PLAY_TRACK") + 1))      
-        flutter build appbundle --release \
-          --build-name=1.0.$BUILD_NUMBER \
-          --build-number=$BUILD_NUMBER
-
-workflows:
-  sample-workflow-id:
-    environment: 
-      # ...
-    scripts: 
-      # ...
-    publishing: 
-      email:
-        recipients:
-          - user_1@example.com
-          - user_2@example.com
-        notify:
-          success: true
-          failure: false
-
-react-native-android:
-  # ... 
-  publishing:
-    # ...
-    google_play:
-      credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
-      track: internal
-      submit_as_draft: true
 
   release:
     name: Release
