@@ -1,7 +1,8 @@
   environment:
     vars:
       PUB_DEV_CREDENTIALS
-  
+    groups:
+      - windows_credentials
   # ...
 
   scripts:
@@ -10,7 +11,21 @@
         echo $PUB_DEV_CREDENTIALS > "$FLUTTER_ROOT/.pub-cache/credentials.json"
         flutter pub publish --dry-run
         flutter pub publish -f
-        
+    - name: Get Flutter packages
+      script: | 
+          flutter packages pub get
+    - name: Build Flutter Windows
+      script: | 
+        flutter config --enable-windows-desktop
+        flutter build windows --release
+        cd build/windows/runner/Release
+        7z a -r ../release.zip ./*
+    artifacts:
+      - build/windows/runner/*.zip
+      
+dev_dependencies:
+    msix: ^2.6.5
+    
 definitions:
   cache: &cache
     cache_paths:
