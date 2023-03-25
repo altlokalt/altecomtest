@@ -1,6 +1,8 @@
 
 # altlokaltecom
 46726412700 https://quackr.io/temporary-numbers/sweden/46726412700
+https://tempmail.email/ 
+palipalipefi@jollyfree.com
 
 ### Table of contents
 - [System requirements](#system-requirements)
